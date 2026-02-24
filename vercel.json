@@ -1,0 +1,5 @@
+{
+  "installCommand": "npm install",
+  "buildCommand": "npx tsx src/cli.ts index . && npx tsx src/static-export.ts . && npx tsx src/static-dashboard.ts .",
+  "outputDirectory": "public"
+}

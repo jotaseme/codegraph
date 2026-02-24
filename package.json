@@ -1,11 +1,12 @@
 {
-  "name": "codegraph",
+  "name": "codegraph-ai",
   "version": "0.1.0",
   "description": "Context engine for AI coding agents — parse, graph, and serve your codebase via MCP",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
-    "codegraph": "dist/cli.js"
+    "codegraph": "dist/cli.js",
+    "codegraph-ai": "dist/cli.js"
   },
   "files": [
     "dist",

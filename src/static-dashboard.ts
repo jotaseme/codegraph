@@ -1,117 +1,61 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "http";
-import { CodeGraphDB } from "../storage/db.js";
-import { readFileSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+/**
+ * Generate the static dashboard HTML that reads from pre-exported JSON files.
+ * The output is saved to public/index.html
+ */
+import { writeFileSync, mkdirSync } from "fs";
+import { join, resolve } from "path";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-export function startWebServer(dbPath: string, port = 3000): void {
-  const db = new CodeGraphDB(dbPath);
-
-  const server = createServer((req, res) => {
-    const url = new URL(req.url ?? "/", `http://localhost:${port}`);
-    const pathname = url.pathname;
-
-    // CORS for dev
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-    if (req.method === "OPTIONS") {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
-    try {
-      if (pathname === "/api/stats") {
-        json(res, db.getProjectOverview());
-      } else if (pathname === "/api/search") {
-        const q = url.searchParams.get("q") ?? "";
-        const limit = parseInt(url.searchParams.get("limit") ?? "20");
-        json(res, db.searchSymbols(q, limit));
-      } else if (pathname.startsWith("/api/symbol/")) {
-        const name = decodeURIComponent(pathname.slice("/api/symbol/".length));
-        json(res, db.getContext(name));
-      } else if (pathname === "/api/file-deps") {
-        const path = url.searchParams.get("path") ?? "";
-        json(res, db.getFileDeps(path));
-      } else if (pathname === "/api/graph") {
-        json(res, getGraphData(db));
-      } else if (pathname === "/api/benchmark") {
-        json(res, db.getTokenSavings());
-      } else if (pathname === "/api/files") {
-        json(res, db.getAllFilePaths());
-      } else if (pathname === "/" || pathname === "/index.html") {
-        res.writeHead(200, { "Content-Type": "text/html" });
-        res.end(getDashboardHtml());
-      } else {
-        res.writeHead(404, { "Content-Type": "text/plain" });
-        res.end("Not found");
-      }
-    } catch (e) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: (e as Error).message }));
-    }
-  });
-
-  server.listen(port, () => {
-    console.error(`  dashboard: http://localhost:${port}`);
-  });
-}
-
-function json(res: ServerResponse, data: unknown): void {
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(data));
-}
-
-interface GraphNode {
-  id: string;
-  name: string;
-  type: string;
-  path: string;
-  connections: number;
-  exported: boolean;
-}
-
-interface GraphEdge {
-  source: string;
-  target: string;
-  type: string;
-}
-
-function getGraphData(db: CodeGraphDB): { nodes: GraphNode[]; edges: GraphEdge[] } {
-  // Get all symbols with their connection counts
-  const nodes = db.getGraphNodes();
-  const edges = db.getGraphEdges();
-  return { nodes, edges };
-}
-
-function getDashboardHtml(): string {
+function getStaticDashboardHtml(): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CodeGraph Dashboard</title>
+  <title>CodeGraph — Context engine for AI coding agents</title>
+  <meta name="description" content="Parse your codebase, build a dependency graph, serve structured context via MCP. 96% fewer tokens for AI agents.">
   <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
       background: #0a0a0a; color: #e0e0e0; height: 100vh; overflow: hidden;
-      display: flex;
+      display: flex; flex-direction: column;
     }
+    #hero {
+      padding: 20px 24px; border-bottom: 1px solid #222; background: #0d1117;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    #hero h1 { font-size: 20px; font-weight: 700; color: #fff; }
+    #hero h1 span { color: #4aff7a; }
+    #hero .tagline { font-size: 13px; color: #888; margin-top: 2px; }
+    #hero .cta {
+      display: flex; gap: 10px; align-items: center;
+    }
+    .cta-btn {
+      padding: 8px 16px; border-radius: 6px; font-size: 13px; font-family: inherit;
+      cursor: pointer; text-decoration: none; font-weight: 500;
+    }
+    .cta-primary {
+      background: #4aff7a; color: #0a0a0a; border: none;
+    }
+    .cta-secondary {
+      background: transparent; color: #4a9eff; border: 1px solid #333;
+    }
+    .cta-code {
+      background: #1a1a2a; color: #4aff7a; border: 1px solid #333;
+      font-family: 'SF Mono', monospace; padding: 8px 14px; border-radius: 6px;
+      font-size: 13px; user-select: all;
+    }
+    #app { flex: 1; display: flex; overflow: hidden; }
     #sidebar {
       width: 380px; min-width: 380px; background: #111; border-right: 1px solid #222;
-      display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+      display: flex; flex-direction: column; overflow: hidden;
     }
     #sidebar-header {
       padding: 16px; border-bottom: 1px solid #222;
     }
-    #sidebar-header h1 {
-      font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 8px;
+    #sidebar-header h2 {
+      font-size: 14px; font-weight: 600; color: #ccc; margin-bottom: 8px;
     }
     #search-box {
       width: 100%; padding: 8px 12px; background: #1a1a1a; border: 1px solid #333;
@@ -189,7 +133,7 @@ function getDashboardHtml(): string {
     #detail-panel {
       position: absolute; top: 16px; right: 16px; width: 450px;
       background: #111; border: 1px solid #333; border-radius: 8px;
-      max-height: calc(100vh - 32px); overflow-y: auto; display: none;
+      max-height: calc(100vh - 100px); overflow-y: auto; display: none;
       box-shadow: 0 8px 32px rgba(0,0,0,0.5);
     }
     #detail-panel.visible { display: block; }
@@ -242,44 +186,56 @@ function getDashboardHtml(): string {
   </style>
 </head>
 <body>
-  <div id="sidebar">
-    <div id="sidebar-header">
-      <h1>CodeGraph</h1>
-      <input type="text" id="search-box" placeholder="Search symbols..." autofocus />
+  <div id="hero">
+    <div>
+      <h1>Code<span>Graph</span></h1>
+      <div class="tagline">Context engine for AI coding agents &mdash; 96% fewer tokens</div>
     </div>
-    <div class="stats" id="stats"></div>
-    <div id="savings-panel"></div>
-    <div id="results"></div>
+    <div class="cta">
+      <code class="cta-code">npx codegraph-ai index .</code>
+      <a href="https://github.com/jotaeme/codegraph" target="_blank" class="cta-btn cta-secondary">GitHub</a>
+    </div>
   </div>
-  <div id="main">
-    <div id="graph-container"></div>
-    <div id="toolbar">
-      <button class="toolbar-btn active" id="btn-all">All</button>
-      <button class="toolbar-btn" id="btn-functions">Functions</button>
-      <button class="toolbar-btn" id="btn-types">Types</button>
-      <button class="toolbar-btn" id="btn-files">Files</button>
-    </div>
-    <div id="legend">
-      <div class="legend-item"><div class="legend-dot" style="background:#4aff7a"></div> Function</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#c77dff"></div> Class</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#4a9eff"></div> Interface</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#ffd94a"></div> Variable</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#4affd9"></div> Type Alias</div>
-    </div>
-    <div id="detail-panel">
-      <div class="detail-header">
-        <div>
-          <div class="result-name" id="detail-name"></div>
-          <div class="result-path" id="detail-path"></div>
-        </div>
-        <button class="detail-close" onclick="closeDetail()">&times;</button>
+  <div id="app">
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <h2>Live Demo &mdash; CodeGraph indexed on itself</h2>
+        <input type="text" id="search-box" placeholder="Search symbols..." autofocus />
       </div>
-      <div class="detail-body" id="detail-body"></div>
+      <div class="stats" id="stats"></div>
+      <div id="savings-panel"></div>
+      <div id="results"></div>
+    </div>
+    <div id="main">
+      <div id="graph-container"></div>
+      <div id="toolbar">
+        <button class="toolbar-btn active" id="btn-all">All</button>
+        <button class="toolbar-btn" id="btn-functions">Functions</button>
+        <button class="toolbar-btn" id="btn-types">Types</button>
+      </div>
+      <div id="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4aff7a"></div> Function</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#c77dff"></div> Class</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#4a9eff"></div> Interface</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ffd94a"></div> Variable</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#4affd9"></div> Type Alias</div>
+      </div>
+      <div id="detail-panel">
+        <div class="detail-header">
+          <div>
+            <div class="result-name" id="detail-name"></div>
+            <div class="result-path" id="detail-path"></div>
+          </div>
+          <button class="detail-close" onclick="closeDetail()">&times;</button>
+        </div>
+        <div class="detail-body" id="detail-body"></div>
+      </div>
     </div>
   </div>
 
   <script>
-    const API = '';
+    // Static mode: fetch from .json files
+    const API = '/api';
     const colors = {
       'function': '#4aff7a', 'class': '#c77dff', 'interface': '#4a9eff',
       'variable': '#ffd94a', 'type_alias': '#4affd9',
@@ -288,13 +244,13 @@ function getDashboardHtml(): string {
     let graphData = null;
     let simulation = null;
     let currentFilter = 'all';
+    let allSymbolsCache = null;
 
-    // Load initial data
     async function init() {
       const [statsRes, graphRes, benchRes] = await Promise.all([
-        fetch(API + '/api/stats').then(r => r.json()),
-        fetch(API + '/api/graph').then(r => r.json()),
-        fetch(API + '/api/benchmark').then(r => r.json()),
+        fetch(API + '/stats.json').then(r => r.json()),
+        fetch(API + '/graph.json').then(r => r.json()),
+        fetch(API + '/benchmark.json').then(r => r.json()),
       ]);
 
       graphData = graphRes;
@@ -310,19 +266,20 @@ function getDashboardHtml(): string {
       // Token savings
       renderSavings(benchRes);
 
-      // Show hub symbols in sidebar
+      // Show hub symbols
+      allSymbolsCache = statsRes.hubSymbols;
       showHubSymbols(statsRes.hubSymbols);
 
-      // Render graph
       renderGraph(graphRes);
+    }
+
+    function stat(val, label) {
+      return '<div class="stat-item"><span class="stat-value">' + val + '</span><span class="stat-label">' + label + '</span></div>';
     }
 
     function renderSavings(data) {
       const panel = document.getElementById('savings-panel');
-      if (!data.symbols || data.symbols.length === 0) {
-        panel.style.display = 'none';
-        return;
-      }
+      if (!data.symbols || data.symbols.length === 0) { panel.style.display = 'none'; return; }
       const t = data.total;
       let html = '<h2>Token Savings</h2>';
       html += '<div class="savings-hero">';
@@ -340,10 +297,6 @@ function getDashboardHtml(): string {
       panel.innerHTML = html;
     }
 
-    function stat(val, label) {
-      return '<div class="stat-item"><span class="stat-value">' + val + '</span><span class="stat-label">' + label + '</span></div>';
-    }
-
     function showHubSymbols(symbols) {
       const el = document.getElementById('results');
       el.innerHTML = symbols.map(s =>
@@ -355,32 +308,52 @@ function getDashboardHtml(): string {
       ).join('');
     }
 
-    // Search
+    // Search: in static mode, filter from cached symbols
     let searchTimeout;
     document.getElementById('search-box').addEventListener('input', (e) => {
       clearTimeout(searchTimeout);
-      const q = e.target.value.trim();
+      const q = e.target.value.trim().toLowerCase();
       if (!q) {
-        fetch(API + '/api/stats').then(r => r.json()).then(d => showHubSymbols(d.hubSymbols));
+        if (allSymbolsCache) showHubSymbols(allSymbolsCache);
         return;
       }
-      searchTimeout = setTimeout(async () => {
-        const results = await fetch(API + '/api/search?q=' + encodeURIComponent(q) + '&limit=30').then(r => r.json());
-        const el = document.getElementById('results');
-        el.innerHTML = results.map(r =>
-          '<div class="result-item" onclick="showSymbol(\\'' + escapeHtml(r.name) + '\\')">' +
-          '<span class="result-name">' + escapeHtml(r.name) + '</span>' +
-          '<span class="result-type type-' + r.type + '">' + r.type + '</span>' +
-          '<div class="result-path">' + shortPath(r.path) + '</div>' +
-          '<div class="result-sig">' + escapeHtml(r.signature) + '</div>' +
-          '</div>'
-        ).join('');
-      }, 200);
+      searchTimeout = setTimeout(() => {
+        // Filter from graph nodes
+        if (graphData) {
+          const results = graphData.nodes
+            .filter(n => n.name.toLowerCase().includes(q))
+            .sort((a, b) => b.connections - a.connections)
+            .slice(0, 20);
+          const el = document.getElementById('results');
+          el.innerHTML = results.map(r =>
+            '<div class="result-item" onclick="showSymbol(\\'' + escapeHtml(r.name) + '\\')">' +
+            '<span class="result-name">' + escapeHtml(r.name) + '</span>' +
+            '<span class="result-type type-' + r.type + '">' + r.type + '</span>' +
+            '<div class="result-path">' + shortPath(r.path) + '</div>' +
+            '</div>'
+          ).join('');
+        }
+      }, 150);
     });
 
-    // Symbol detail
     async function showSymbol(name) {
-      const data = await fetch(API + '/api/symbol/' + encodeURIComponent(name)).then(r => r.json());
+      // Try to load pre-generated JSON, fall back gracefully
+      let data;
+      try {
+        data = await fetch(API + '/symbol/' + encodeURIComponent(name) + '.json').then(r => {
+          if (!r.ok) throw new Error('not found');
+          return r.json();
+        });
+      } catch {
+        // Symbol not pre-generated, show what we know from graph
+        const node = graphData?.nodes?.find(n => n.name === name);
+        if (!node) return;
+        data = {
+          symbol: { name: node.name, type: node.type, path: node.path, signature: '', body: '(source not available in demo)' },
+          dependencies: [],
+          dependents: [],
+        };
+      }
       if (!data.symbol) return;
 
       const panel = document.getElementById('detail-panel');
@@ -388,8 +361,10 @@ function getDashboardHtml(): string {
       document.getElementById('detail-path').textContent = shortPath(data.symbol.path);
 
       let html = '';
-      html += '<div class="detail-section"><h3>Signature</h3>';
-      html += '<div class="detail-code">' + escapeHtml(data.symbol.signature) + '</div></div>';
+      if (data.symbol.signature) {
+        html += '<div class="detail-section"><h3>Signature</h3>';
+        html += '<div class="detail-code">' + escapeHtml(data.symbol.signature) + '</div></div>';
+      }
 
       html += '<div class="detail-section"><h3>Source</h3>';
       html += '<div class="detail-code">' + escapeHtml(data.symbol.body) + '</div></div>';
@@ -418,8 +393,6 @@ function getDashboardHtml(): string {
 
       document.getElementById('detail-body').innerHTML = html;
       panel.classList.add('visible');
-
-      // Highlight in graph
       highlightNode(name);
     }
 
@@ -428,7 +401,6 @@ function getDashboardHtml(): string {
       unhighlightAll();
     }
 
-    // Graph rendering
     function renderGraph(data) {
       const container = document.getElementById('graph-container');
       const width = container.clientWidth;
@@ -441,12 +413,10 @@ function getDashboardHtml(): string {
 
       const g = svg.append('g');
 
-      // Zoom
       svg.call(d3.zoom().scaleExtent([0.1, 4]).on('zoom', (e) => {
         g.attr('transform', e.transform);
       }));
 
-      // Filter nodes by connection count (show top nodes for performance)
       let nodes = data.nodes.filter(n => n.connections > 0);
       if (nodes.length > 150) {
         nodes = nodes.sort((a, b) => b.connections - a.connections).slice(0, 150);
@@ -518,7 +488,6 @@ function getDashboardHtml(): string {
             const typeMap = {
               'functions': ['function'],
               'types': ['interface', 'type_alias', 'class'],
-              'files': null, // show all as file-level
             };
             const types = typeMap[currentFilter];
             if (types) {
@@ -539,6 +508,7 @@ function getDashboardHtml(): string {
     }
 
     function escapeHtml(s) {
+      if (!s) return '';
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
@@ -547,3 +517,12 @@ function getDashboardHtml(): string {
 </body>
 </html>`;
 }
+
+const targetDir = resolve(process.argv[2] || ".");
+const outDir = join(targetDir, "public");
+
+import { existsSync } from "fs";
+if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+
+writeFileSync(join(outDir, "index.html"), getStaticDashboardHtml());
+console.log(`  public/index.html`);

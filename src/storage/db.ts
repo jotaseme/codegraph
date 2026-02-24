@@ -371,6 +371,66 @@ export class CodeGraphDB {
     `).all() as any[];
   }
 
+  /**
+   * Estimate token savings for the top hub symbols.
+   * Returns per-symbol and aggregate stats.
+   */
+  getTokenSavings(): {
+    symbols: { name: string; type: string; withoutTokens: number; withTokens: number; percentSaved: number }[];
+    total: { withoutTokens: number; withTokens: number; percentSaved: number; monthlySavings: number };
+  } {
+    const hubSymbols = this.db.prepare(`
+      SELECT s.name, s.type, f.path, s.signature, s.body, COUNT(e.source_id) as connections
+      FROM symbols s
+      JOIN files f ON s.file_id = f.id
+      JOIN edges e ON e.target_id = s.id
+      GROUP BY s.id
+      ORDER BY connections DESC
+      LIMIT 8
+    `).all() as any[];
+
+    const results: { name: string; type: string; withoutTokens: number; withTokens: number; percentSaved: number }[] = [];
+    let totalWithout = 0;
+    let totalWith = 0;
+
+    for (const hub of hubSymbols) {
+      const ctx = this.getContext(hub.name);
+      if (!ctx.symbol) continue;
+
+      // "Without" = estimate reading all related files
+      const filePaths = new Set<string>();
+      filePaths.add(ctx.symbol.path);
+      for (const d of ctx.dependencies) filePaths.add(d.path);
+      for (const d of ctx.dependents) filePaths.add(d.path);
+
+      // Estimate file sizes from DB (avg ~100 lines * ~40 chars = ~4000 chars per file)
+      const avgFileChars = 4000;
+      const withoutChars = filePaths.size * avgFileChars;
+
+      // "With" = structured context output
+      let withChars = (ctx.symbol.signature?.length ?? 0) + (ctx.symbol.body?.length ?? 0);
+      for (const d of ctx.dependencies) withChars += (d.signature?.length ?? 0) + d.name.length + d.path.length + 20;
+      for (const d of ctx.dependents) withChars += (d.signature?.length ?? 0) + d.name.length + d.path.length + 20;
+
+      const withoutTokens = Math.ceil(withoutChars / 4);
+      const withTokens = Math.ceil(withChars / 4);
+      const percentSaved = withoutTokens > 0 ? Math.round((1 - withTokens / withoutTokens) * 100) : 0;
+
+      results.push({ name: hub.name, type: hub.type, withoutTokens, withTokens, percentSaved });
+      totalWithout += withoutTokens;
+      totalWith += withTokens;
+    }
+
+    const totalPercent = totalWithout > 0 ? Math.round((1 - totalWith / totalWithout) * 100) : 0;
+    // Cost estimate: Claude Sonnet $3/M input tokens, 100 ops/day, 30 days
+    const monthlySavings = ((totalWithout - totalWith) / 1_000_000) * 3 * (100 / Math.max(results.length, 1)) * 30;
+
+    return {
+      symbols: results,
+      total: { withoutTokens: totalWithout, withTokens: totalWith, percentSaved: totalPercent, monthlySavings: Math.round(monthlySavings * 100) / 100 },
+    };
+  }
+
   close(): void {
     this.db.close();
   }

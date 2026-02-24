@@ -1,6 +1,8 @@
-# CodeGraph
+# CodeGraph (`codegraph-ai`)
 
 Context engine for AI coding agents. Parses your codebase with tree-sitter, builds a dependency graph, and serves structured context via MCP.
+
+> **npm package:** `codegraph-ai` — install with `npx codegraph-ai-ai`
 
 **Works with:** Claude Code, Cursor, Windsurf, Cline, and any MCP-compatible client.
 
@@ -47,19 +49,19 @@ Claude Code / Cursor / Windsurf / Cline
 
 ```bash
 # Index your project
-npx codegraph index .
+npx codegraph-ai index .
 
 # Start MCP server (for AI agents)
-npx codegraph serve .
+npx codegraph-ai serve .
 
 # Start web dashboard (for humans)
-npx codegraph dashboard .
+npx codegraph-ai dashboard .
 
 # Query a symbol
-npx codegraph query getAllServers
+npx codegraph-ai query getAllServers
 
 # Run token savings benchmark
-npx codegraph benchmark .
+npx codegraph-ai benchmark .
 ```
 
 ## MCP Tools
@@ -80,7 +82,7 @@ npx codegraph benchmark .
   "mcpServers": {
     "codegraph": {
       "command": "npx",
-      "args": ["codegraph", "serve", "/path/to/your/project"]
+      "args": ["codegraph-ai", "serve", "/path/to/your/project"]
     }
   }
 }
@@ -95,7 +97,7 @@ Add to `.cursor/mcp.json`:
   "mcpServers": {
     "codegraph": {
       "command": "npx",
-      "args": ["codegraph", "serve", "/path/to/your/project"]
+      "args": ["codegraph-ai", "serve", "/path/to/your/project"]
     }
   }
 }
@@ -110,7 +112,7 @@ Add to MCP settings:
   "mcpServers": {
     "codegraph": {
       "command": "npx",
-      "args": ["codegraph", "serve", "/path/to/your/project"]
+      "args": ["codegraph-ai", "serve", "/path/to/your/project"]
     }
   }
 }

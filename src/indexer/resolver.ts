@@ -121,6 +121,15 @@ function tryResolveFile(candidate: string): string | null {
     if (existsSync(withExt)) return withExt;
   }
 
+  // Strip .js/.jsx extension and try .ts/.tsx (ESM TypeScript pattern)
+  if (candidate.endsWith(".js") || candidate.endsWith(".jsx")) {
+    const stripped = candidate.replace(/\.jsx?$/, "");
+    for (const ext of TS_EXTENSIONS) {
+      const withExt = stripped + ext;
+      if (existsSync(withExt)) return withExt;
+    }
+  }
+
   // Try /index.ts etc.
   for (const ext of TS_EXTENSIONS) {
     const indexFile = join(candidate, `index${ext}`);

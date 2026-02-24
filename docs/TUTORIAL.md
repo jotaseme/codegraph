@@ -61,7 +61,7 @@ That's it.
 Open your terminal in your project directory and run:
 
 ```bash
-npx codegraph index .
+npx codegraph-ai index .
 ```
 
 You'll see something like:
@@ -95,7 +95,7 @@ Pick your editor:
   "mcpServers": {
     "codegraph": {
       "command": "npx",
-      "args": ["codegraph", "serve", "/absolute/path/to/your/project"]
+      "args": ["codegraph-ai", "serve", "/absolute/path/to/your/project"]
     }
   }
 }
@@ -108,7 +108,7 @@ Pick your editor:
   "mcpServers": {
     "codegraph": {
       "command": "npx",
-      "args": ["codegraph", "serve", "/absolute/path/to/your/project"]
+      "args": ["codegraph-ai", "serve", "/absolute/path/to/your/project"]
     }
   }
 }
@@ -121,7 +121,7 @@ Pick your editor:
   "mcpServers": {
     "codegraph": {
       "command": "npx",
-      "args": ["codegraph", "serve", "/absolute/path/to/your/project"]
+      "args": ["codegraph-ai", "serve", "/absolute/path/to/your/project"]
     }
   }
 }
@@ -224,7 +224,7 @@ Your AI gets a mental map of your project in one call.
 Want to see your codebase visually? Run:
 
 ```bash
-npx codegraph dashboard .
+npx codegraph-ai dashboard .
 ```
 
 Open `http://localhost:3000` in your browser. You'll see:
@@ -244,7 +244,7 @@ Want to see exactly how many tokens CodeGraph saves for your project?
 
 ```bash
 # First, index your project
-npx codegraph index .
+npx codegraph-ai index .
 
 # Then run the benchmark
 npx tsx node_modules/codegraph/src/benchmark.ts .
