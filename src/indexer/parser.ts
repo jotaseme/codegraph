@@ -60,7 +60,7 @@ export async function parseFile(filePath: string, content?: string): Promise<Par
   const parser = new Parser();
   parser.setLanguage(isTsx ? tsxLanguage! : tsLanguage!);
 
-  const tree = parser.parse(source);
+  const tree = parser.parse(source)!;
   const root = tree.rootNode;
 
   const symbols: ParsedSymbol[] = [];
