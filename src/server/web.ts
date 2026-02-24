@@ -39,6 +39,8 @@ export function startWebServer(dbPath: string, port = 3000): void {
         json(res, db.getFileDeps(path));
       } else if (pathname === "/api/graph") {
         json(res, getGraphData(db));
+      } else if (pathname === "/api/usage") {
+        json(res, db.getUsageStats());
       } else if (pathname === "/api/benchmark") {
         json(res, db.getTokenSavings());
       } else if (pathname === "/api/files") {
@@ -157,6 +159,30 @@ function getDashboardHtml(): string {
       height: 100%; background: #4aff7a; border-radius: 3px; transition: width 0.5s;
     }
     .savings-bar .pct { width: 35px; text-align: right; color: #4aff7a; font-weight: 600; }
+    #usage-panel {
+      padding: 12px 16px; border-bottom: 1px solid #222;
+    }
+    #usage-panel h2 {
+      font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: 10px;
+    }
+    .usage-hero {
+      display: flex; gap: 16px; margin-bottom: 10px;
+    }
+    .usage-stat {
+      display: flex; flex-direction: column;
+    }
+    .usage-stat .value { font-size: 22px; font-weight: 700; color: #4a9eff; }
+    .usage-stat .label { font-size: 10px; color: #666; text-transform: uppercase; }
+    .usage-log {
+      max-height: 120px; overflow-y: auto; font-size: 11px;
+    }
+    .usage-entry {
+      padding: 3px 0; border-bottom: 1px solid #1a1a1a; display: flex; justify-content: space-between;
+    }
+    .usage-entry .tool { color: #4a9eff; font-weight: 500; width: 90px; }
+    .usage-entry .query { color: #888; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .usage-entry .saved { color: #4aff7a; width: 70px; text-align: right; }
     #results {
       flex: 1; overflow-y: auto; padding: 8px;
     }
@@ -249,6 +275,7 @@ function getDashboardHtml(): string {
     </div>
     <div class="stats" id="stats"></div>
     <div id="savings-panel"></div>
+    <div id="usage-panel"></div>
     <div id="results"></div>
   </div>
   <div id="main">
@@ -291,10 +318,11 @@ function getDashboardHtml(): string {
 
     // Load initial data
     async function init() {
-      const [statsRes, graphRes, benchRes] = await Promise.all([
+      const [statsRes, graphRes, benchRes, usageRes] = await Promise.all([
         fetch(API + '/api/stats').then(r => r.json()),
         fetch(API + '/api/graph').then(r => r.json()),
         fetch(API + '/api/benchmark').then(r => r.json()),
+        fetch(API + '/api/usage').then(r => r.json()),
       ]);
 
       graphData = graphRes;
@@ -310,11 +338,20 @@ function getDashboardHtml(): string {
       // Token savings
       renderSavings(benchRes);
 
+      // Usage stats
+      renderUsage(usageRes);
+
       // Show hub symbols in sidebar
       showHubSymbols(statsRes.hubSymbols);
 
       // Render graph
       renderGraph(graphRes);
+
+      // Refresh usage every 30s
+      setInterval(async () => {
+        const u = await fetch(API + '/api/usage').then(r => r.json());
+        renderUsage(u);
+      }, 30000);
     }
 
     function renderSavings(data) {
@@ -337,6 +374,34 @@ function getDashboardHtml(): string {
         html += '</div>';
       }
       html += '<div style="font-size:10px;color:#555;margin-top:8px">*At 100 ops/day, Claude Sonnet pricing</div>';
+      panel.innerHTML = html;
+    }
+
+    function renderUsage(data) {
+      const panel = document.getElementById('usage-panel');
+      if (!data || data.totalCalls === 0) {
+        panel.innerHTML = '<h2>MCP Usage</h2><div style="font-size:12px;color:#555">No tool calls yet. Connect your AI agent to start tracking.</div>';
+        return;
+      }
+      const savedK = (data.totalTokensSaved / 1000).toFixed(1);
+      const cost = (data.totalTokensSaved / 1000000 * 3).toFixed(2);
+      let html = '<h2>MCP Usage (live)</h2>';
+      html += '<div class="usage-hero">';
+      html += '<div class="usage-stat"><span class="value">' + data.totalCalls + '</span><span class="label">Tool Calls</span></div>';
+      html += '<div class="usage-stat"><span class="value" style="color:#4aff7a">' + savedK + 'K</span><span class="label">Tokens Saved</span></div>';
+      html += '<div class="usage-stat"><span class="value" style="color:#ffd94a">$' + cost + '</span><span class="label">$ Saved</span></div>';
+      html += '</div>';
+      if (data.recentCalls.length > 0) {
+        html += '<div class="usage-log">';
+        for (const c of data.recentCalls) {
+          html += '<div class="usage-entry">';
+          html += '<span class="tool">' + c.tool + '</span>';
+          html += '<span class="query">' + escapeHtml(c.query || '') + '</span>';
+          html += '<span class="saved">-' + (c.tokensSaved / 1000).toFixed(1) + 'K tk</span>';
+          html += '</div>';
+        }
+        html += '</div>';
+      }
       panel.innerHTML = html;
     }
 

@@ -40,14 +40,12 @@ export async function startMcpServer(dbPath: string): Promise<void> {
       const text = results
         .map((r) => `[${r.type}] ${r.name}\n  file: ${r.path}\n  signature: ${r.signature}`)
         .join("\n\n");
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Found ${results.length} symbols matching "${args.query}":\n\n${text}`,
-          },
-        ],
-      };
+      const responseText = `Found ${results.length} symbols matching "${args.query}":\n\n${text}`;
+      const tokensUsed = Math.ceil(responseText.length / 4);
+      // Without codegraph: agent would grep + read ~N matching files (~4KB each)
+      const tokensSaved = Math.max(0, results.length * 1000 - tokensUsed);
+      db.logUsage("search", args.query, tokensUsed, tokensSaved);
+      return { content: [{ type: "text" as const, text: responseText }] };
     }
   );
 
@@ -97,6 +95,11 @@ export async function startMcpServer(dbPath: string): Promise<void> {
           .join("\n");
       }
 
+      const tokensUsed = Math.ceil(text.length / 4);
+      // Without codegraph: read symbol file + dependency files + dependent files (~4KB each)
+      const filesAvoided = 1 + ctx.dependencies.length + ctx.dependents.length;
+      const tokensSaved = Math.max(0, filesAvoided * 1000 - tokensUsed);
+      db.logUsage("get_context", args.name, tokensUsed, tokensSaved);
       return { content: [{ type: "text" as const, text }] };
     }
   );
@@ -131,7 +134,11 @@ export async function startMcpServer(dbPath: string): Promise<void> {
         };
       }
 
-      return formatFileDeps(args.path, fileDeps);
+      const result = formatFileDeps(args.path, fileDeps);
+      const tokensUsed = Math.ceil(result.content[0].text.length / 4);
+      const tokensSaved = Math.max(0, 1000 - tokensUsed);
+      db.logUsage("get_file_deps", args.path, tokensUsed, tokensSaved);
+      return result;
     }
   );
 
@@ -163,6 +170,10 @@ export async function startMcpServer(dbPath: string): Promise<void> {
         text += `- ${e.path} (${e.exports} exports)\n`;
       }
 
+      const tokensUsed = Math.ceil(text.length / 4);
+      // Without codegraph: read ~15 files to get overview
+      const tokensSaved = Math.max(0, 15000 - tokensUsed);
+      db.logUsage("project_overview", "", tokensUsed, tokensSaved);
       return { content: [{ type: "text" as const, text }] };
     }
   );

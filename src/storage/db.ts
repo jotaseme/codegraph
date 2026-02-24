@@ -57,6 +57,15 @@ export class CodeGraphDB {
       CREATE INDEX IF NOT EXISTS idx_imports_file ON imports(file_id);
       CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id);
       CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id);
+
+      CREATE TABLE IF NOT EXISTS usage_log (
+        id INTEGER PRIMARY KEY,
+        tool TEXT NOT NULL,
+        query TEXT,
+        tokens_saved INTEGER DEFAULT 0,
+        tokens_used INTEGER DEFAULT 0,
+        timestamp TEXT DEFAULT (datetime('now'))
+      );
     `);
 
     // FTS5 table for full-text search
@@ -369,6 +378,50 @@ export class CodeGraphDB {
       SELECT CAST(source_id AS TEXT) as source, CAST(target_id AS TEXT) as target, type
       FROM edges
     `).all() as any[];
+  }
+
+  // === Usage tracking ===
+
+  logUsage(tool: string, query: string, tokensUsed: number, tokensSaved: number): void {
+    this.db.prepare(
+      "INSERT INTO usage_log (tool, query, tokens_used, tokens_saved) VALUES (?, ?, ?, ?)"
+    ).run(tool, query, tokensUsed, tokensSaved);
+  }
+
+  getUsageStats(): {
+    totalCalls: number;
+    totalTokensSaved: number;
+    totalTokensUsed: number;
+    byTool: { tool: string; calls: number; tokensSaved: number }[];
+    recentCalls: { tool: string; query: string; tokensSaved: number; timestamp: string }[];
+    dailyStats: { date: string; calls: number; tokensSaved: number }[];
+  } {
+    const totalCalls = (this.db.prepare("SELECT COUNT(*) as c FROM usage_log").get() as any).c;
+    const totals = this.db.prepare("SELECT COALESCE(SUM(tokens_saved),0) as saved, COALESCE(SUM(tokens_used),0) as used FROM usage_log").get() as any;
+
+    const byTool = this.db.prepare(`
+      SELECT tool, COUNT(*) as calls, COALESCE(SUM(tokens_saved),0) as tokensSaved
+      FROM usage_log GROUP BY tool ORDER BY calls DESC
+    `).all() as any[];
+
+    const recentCalls = this.db.prepare(`
+      SELECT tool, query, tokens_saved as tokensSaved, timestamp
+      FROM usage_log ORDER BY id DESC LIMIT 20
+    `).all() as any[];
+
+    const dailyStats = this.db.prepare(`
+      SELECT date(timestamp) as date, COUNT(*) as calls, COALESCE(SUM(tokens_saved),0) as tokensSaved
+      FROM usage_log GROUP BY date(timestamp) ORDER BY date DESC LIMIT 30
+    `).all() as any[];
+
+    return {
+      totalCalls,
+      totalTokensSaved: totals.saved,
+      totalTokensUsed: totals.used,
+      byTool,
+      recentCalls,
+      dailyStats,
+    };
   }
 
   /**
