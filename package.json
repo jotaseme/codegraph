@@ -1,0 +1,35 @@
+{
+  "name": "codegraph",
+  "version": "0.1.0",
+  "description": "Context engine for AI coding agents — parse, graph, and serve your codebase via MCP",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "codegraph": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "test:poc": "tsx src/test-poc.ts"
+  },
+  "keywords": [
+    "mcp",
+    "tree-sitter",
+    "code-analysis",
+    "context-engine"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "tree-sitter-cli": "^0.26.5",
+    "tree-sitter-typescript": "^0.23.2",
+    "web-tree-sitter": "^0.26.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
