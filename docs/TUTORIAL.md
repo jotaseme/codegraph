@@ -263,7 +263,7 @@ You'll get a table showing token counts with and without CodeGraph for different
 ## FAQ
 
 **Q: Do I need to re-index after changing files?**
-A: Yes, run `codegraph index .` again. It takes <200ms for most projects. A file watcher for automatic re-indexing is coming soon.
+A: Use `--watch` flag to auto re-index: `codegraph-ai serve . --watch`. Or run `codegraph-ai index .` manually (<200ms).
 
 **Q: Does it work with monorepos?**
 A: Not yet. Currently works best with single-package projects. Monorepo support is planned.
@@ -294,3 +294,21 @@ A: Yes. Each project gets its own `.codegraph.db`. Configure one MCP server per 
 **MCP server not connecting** — Make sure the path in your MCP config is absolute (starts with `/`), not relative.
 
 **No symbols found** — Check that your project has `.ts`, `.tsx`, `.js`, or `.jsx` files in the `src/` directory (or wherever your source code lives).
+
+---
+
+## When CodeGraph helps vs. when it doesn't
+
+**Use CodeGraph for:**
+- Understanding project structure → `project_overview`
+- Finding where a function/type is defined → `search`
+- Understanding who uses what → `get_context`
+- Quick file overview without reading it → `get_file_deps`
+
+**Don't rely on CodeGraph for:**
+- **Editing code** — your agent needs to read the full file anyway
+- **Small projects** (<20 files) — faster to just read files directly
+- **Internal logic** — only exported symbols are indexed; comments, configs, and helper functions may be missing
+- **Stale data** — always use `--watch` or re-index after changes; outdated info can lead to wrong decisions
+
+**Tip:** Add instructions to your project's `CLAUDE.md` telling the agent to use codegraph before reading files. This dramatically increases how often it's used. See the README for a recommended template.

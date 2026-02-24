@@ -2,7 +2,7 @@
 
 Context engine for AI coding agents. Parses your codebase with tree-sitter, builds a dependency graph, and serves structured context via MCP.
 
-> **npm package:** `codegraph-ai` — install with `npx codegraph-ai-ai`
+> **npm package:** `codegraph-ai` — install with `npx codegraph-ai`
 
 **Works with:** Claude Code, Cursor, Windsurf, Cline, and any MCP-compatible client.
 
@@ -117,6 +117,33 @@ Add to MCP settings:
   }
 }
 ```
+
+## Recommended CLAUDE.md instructions
+
+Add this to your project's `CLAUDE.md` so your AI agent uses codegraph effectively:
+
+```markdown
+## CodeGraph (read before exploring code)
+
+This project has codegraph configured as MCP server. ALWAYS follow this flow:
+
+1. **Before any task**: call `project_overview` to understand the structure
+2. **Before searching code**: call `search` instead of grep/glob
+3. **Before reading a file**: call `get_context` of the symbol you need — gives you code + dependencies + dependents without reading full files
+4. **To understand a file**: call `get_file_deps` first — shows imports and exports
+5. **Only read full files** when you need to edit code or codegraph context isn't enough
+```
+
+## When NOT to use CodeGraph
+
+CodeGraph is not always the right choice. Be aware of these limitations:
+
+- **Stale index**: If you don't use `--watch` and change code, the agent gets outdated info and may make wrong decisions. Always use `serve --watch` or re-index after changes.
+- **Small projects**: For projects with <20 files, it's faster to read files directly than making MCP calls. The overhead isn't worth it.
+- **Editing code**: When the agent needs to modify a file, it must read the full file anyway. CodeGraph helps with exploration, not editing.
+- **Internal logic**: CodeGraph only indexes exported symbols (functions, classes, types). Comments, configuration files, internal helper functions, and business logic details may not appear. Don't rely solely on codegraph for a full audit.
+
+**Rule of thumb**: Use codegraph for **understanding and navigating** the codebase. Use file reads for **editing and deep inspection**.
 
 ## Dashboard
 
