@@ -7,6 +7,7 @@ import { walkDirectory } from "./indexer/walker.js";
 import { buildGraph } from "./indexer/graph.js";
 import { CodeGraphDB } from "./storage/db.js";
 import { startMcpServer } from "./server/mcp.js";
+import { startWebServer } from "./server/web.js";
 
 const DB_FILENAME = ".codegraph.db";
 
@@ -23,6 +24,8 @@ async function main() {
     await indexCommand(args.slice(1));
   } else if (command === "serve") {
     await serveCommand(args.slice(1));
+  } else if (command === "dashboard") {
+    await dashboardCommand(args.slice(1));
   } else if (command === "query") {
     await queryCommand(args.slice(1));
   } else {
@@ -39,6 +42,7 @@ codegraph — Context engine for AI coding agents
 Commands:
   index [dir]     Index a project directory (default: current dir)
   serve [dir]     Start MCP server on stdio (default: current dir)
+  dashboard [dir] Start web dashboard on http://localhost:3000
   query <name>    Query a symbol from the index
 
 Options:
@@ -116,6 +120,24 @@ async function serveCommand(args: string[]) {
   console.error(`  db: ${dbPath}`);
 
   await startMcpServer(dbPath);
+}
+
+async function dashboardCommand(args: string[]) {
+  const targetDir = resolve(args[0] || ".");
+  const dbPath = join(targetDir, DB_FILENAME);
+
+  if (!existsSync(dbPath)) {
+    console.error(
+      `No index found at ${dbPath}. Run "codegraph index ${targetDir}" first.`
+    );
+    process.exit(1);
+  }
+
+  const port = parseInt(args.find((a) => a.startsWith("--port="))?.split("=")[1] ?? "3000");
+
+  console.log(`codegraph dashboard`);
+  console.log(`  db: ${dbPath}`);
+  startWebServer(dbPath, port);
 }
 
 async function queryCommand(args: string[]) {

@@ -346,6 +346,31 @@ export class CodeGraphDB {
     );
   }
 
+  getGraphNodes(): { id: string; name: string; type: string; path: string; connections: number; exported: boolean }[] {
+    return this.db.prepare(`
+      SELECT
+        CAST(s.id AS TEXT) as id,
+        s.name,
+        s.type,
+        f.path,
+        s.exported,
+        (
+          (SELECT COUNT(*) FROM edges WHERE source_id = s.id) +
+          (SELECT COUNT(*) FROM edges WHERE target_id = s.id)
+        ) as connections
+      FROM symbols s
+      JOIN files f ON s.file_id = f.id
+      ORDER BY connections DESC
+    `).all() as any[];
+  }
+
+  getGraphEdges(): { source: string; target: string; type: string }[] {
+    return this.db.prepare(`
+      SELECT CAST(source_id AS TEXT) as source, CAST(target_id AS TEXT) as target, type
+      FROM edges
+    `).all() as any[];
+  }
+
   close(): void {
     this.db.close();
   }
