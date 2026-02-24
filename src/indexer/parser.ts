@@ -1,8 +1,8 @@
 import { Parser, Language, type Node as SyntaxNode } from "web-tree-sitter";
 import { readFile } from "fs/promises";
+import { existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const GRAMMARS_DIR = join(__dirname, "../../grammars");
 
@@ -36,13 +36,25 @@ let tsxLanguage: InstanceType<typeof Language> | null = null;
 async function ensureInit(): Promise<void> {
   if (parserReady) return parserReady;
   parserReady = (async () => {
+    // Resolve web-tree-sitter.wasm: try import.meta.resolve first, fall back to walking up
+    let wasmPath: string | null = null;
+    try {
+      const resolved = import.meta.resolve("web-tree-sitter");
+      wasmPath = join(dirname(fileURLToPath(resolved)), "web-tree-sitter.wasm");
+    } catch {}
+    if (!wasmPath || !existsSync(wasmPath)) {
+      // Walk up from __dirname looking for node_modules/web-tree-sitter
+      let dir = __dirname;
+      for (let i = 0; i < 10; i++) {
+        const candidate = join(dir, "node_modules", "web-tree-sitter", "web-tree-sitter.wasm");
+        if (existsSync(candidate)) { wasmPath = candidate; break; }
+        dir = dirname(dir);
+      }
+    }
     await Parser.init({
       locateFile: (scriptName: string) => {
-        return join(
-          dirname(fileURLToPath(import.meta.url)),
-          "../../node_modules/web-tree-sitter",
-          scriptName
-        );
+        if (wasmPath && scriptName === "web-tree-sitter.wasm") return wasmPath;
+        return scriptName;
       },
     });
     tsLanguage = await Language.load(join(GRAMMARS_DIR, "tree-sitter-typescript.wasm"));
