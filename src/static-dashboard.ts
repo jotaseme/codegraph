@@ -193,7 +193,7 @@ function getStaticDashboardHtml(): string {
     </div>
     <div class="cta">
       <code class="cta-code">npx codegraph-ai index .</code>
-      <a href="https://github.com/jotaeme/codegraph" target="_blank" class="cta-btn cta-secondary">GitHub</a>
+      <a href="https://github.com/jotaseme/codegraph" target="_blank" class="cta-btn cta-secondary">GitHub</a>
     </div>
   </div>
   <div id="app">
