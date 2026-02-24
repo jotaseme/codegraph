@@ -21,10 +21,12 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.0",
     "better-sqlite3": "^12.6.2",
     "tree-sitter-cli": "^0.26.5",
     "tree-sitter-typescript": "^0.23.2",
-    "web-tree-sitter": "^0.26.5"
+    "web-tree-sitter": "^0.26.5",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

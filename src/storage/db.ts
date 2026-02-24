@@ -187,6 +187,165 @@ export class CodeGraphDB {
     `).all(name) as any[];
   }
 
+  // Graph methods
+  getExportedSymbolsWithIds(): { id: number; name: string; path: string }[] {
+    return this.db.prepare(`
+      SELECT s.id, s.name, f.path
+      FROM symbols s
+      JOIN files f ON s.file_id = f.id
+      WHERE s.exported = 1
+    `).all() as any[];
+  }
+
+  getSymbolsByFile(filePath: string): { id: number; name: string; type: string; body: string }[] {
+    return this.db.prepare(`
+      SELECT s.id, s.name, s.type, s.body
+      FROM symbols s
+      JOIN files f ON s.file_id = f.id
+      WHERE f.path = ?
+    `).all(filePath) as any[];
+  }
+
+  insertEdge(sourceId: number, targetId: number, type: string): void {
+    this.db.prepare(
+      "INSERT INTO edges (source_id, target_id, type) VALUES (?, ?, ?)"
+    ).run(sourceId, targetId, type);
+  }
+
+  // Get symbols that depend on a given symbol (who uses it)
+  getDependents(symbolName: string): { id: number; name: string; type: string; path: string; signature: string }[] {
+    return this.db.prepare(`
+      SELECT DISTINCT s.id, s.name, s.type, f.path, s.signature
+      FROM edges e
+      JOIN symbols target ON e.target_id = target.id
+      JOIN symbols s ON e.source_id = s.id
+      JOIN files f ON s.file_id = f.id
+      WHERE target.name = ?
+    `).all(symbolName) as any[];
+  }
+
+  // Get symbols that a given symbol depends on
+  getDependencies(symbolName: string): { id: number; name: string; type: string; path: string; signature: string }[] {
+    return this.db.prepare(`
+      SELECT DISTINCT s.id, s.name, s.type, f.path, s.signature
+      FROM edges e
+      JOIN symbols source ON e.source_id = source.id
+      JOIN symbols s ON e.target_id = s.id
+      JOIN files f ON s.file_id = f.id
+      WHERE source.name = ?
+    `).all(symbolName) as any[];
+  }
+
+  // Get context for a symbol: the symbol itself + its dependencies + its dependents
+  getContext(symbolName: string, depth: number = 1): {
+    symbol: { name: string; type: string; path: string; signature: string; body: string; exported: boolean } | null;
+    dependencies: { name: string; type: string; path: string; signature: string }[];
+    dependents: { name: string; type: string; path: string; signature: string }[];
+  } {
+    const symbols = this.getSymbol(symbolName);
+    if (symbols.length === 0) return { symbol: null, dependencies: [], dependents: [] };
+
+    const symbol = symbols[0];
+    const dependencies = this.getDependencies(symbolName);
+    const dependents = this.getDependents(symbolName);
+
+    return {
+      symbol: {
+        name: symbol.name,
+        type: symbol.type,
+        path: symbol.path,
+        signature: symbol.signature,
+        body: symbol.body,
+        exported: !!symbol.exported,
+      },
+      dependencies: dependencies.map((d) => ({
+        name: d.name,
+        type: d.type,
+        path: d.path,
+        signature: d.signature,
+      })),
+      dependents: dependents.map((d) => ({
+        name: d.name,
+        type: d.type,
+        path: d.path,
+        signature: d.signature,
+      })),
+    };
+  }
+
+  // Get file dependencies
+  getFileDeps(filePath: string): {
+    imports: { source: string; specifiers: string[]; isTypeOnly: boolean }[];
+    exports: { name: string; type: string; signature: string }[];
+  } {
+    const fileImports = this.db.prepare(`
+      SELECT source, specifiers, is_type_only
+      FROM imports i
+      JOIN files f ON i.file_id = f.id
+      WHERE f.path = ?
+    `).all(filePath) as any[];
+
+    const fileExports = this.db.prepare(`
+      SELECT s.name, s.type, s.signature
+      FROM symbols s
+      JOIN files f ON s.file_id = f.id
+      WHERE f.path = ? AND s.exported = 1
+    `).all(filePath) as any[];
+
+    return {
+      imports: fileImports.map((i: any) => ({
+        source: i.source,
+        specifiers: JSON.parse(i.specifiers || "[]"),
+        isTypeOnly: !!i.is_type_only,
+      })),
+      exports: fileExports,
+    };
+  }
+
+  // Project overview: most connected symbols (hub nodes)
+  getProjectOverview(): {
+    stats: { files: number; symbols: number; imports: number; exported: number; edges: number };
+    hubSymbols: { name: string; type: string; path: string; signature: string; connections: number }[];
+    entryPoints: { path: string; exports: number }[];
+  } {
+    const stats = this.getStats();
+    const edges = (this.db.prepare("SELECT COUNT(*) as count FROM edges").get() as any).count;
+
+    // Hub symbols: most referenced (most incoming edges)
+    const hubSymbols = this.db.prepare(`
+      SELECT s.name, s.type, f.path, s.signature, COUNT(e.source_id) as connections
+      FROM symbols s
+      JOIN files f ON s.file_id = f.id
+      JOIN edges e ON e.target_id = s.id
+      GROUP BY s.id
+      ORDER BY connections DESC
+      LIMIT 20
+    `).all() as any[];
+
+    // Entry points: files with exports but few/no incoming edges
+    const entryPoints = this.db.prepare(`
+      SELECT f.path, COUNT(s.id) as exports
+      FROM files f
+      JOIN symbols s ON s.file_id = f.id
+      WHERE s.exported = 1
+      AND f.path LIKE '%/page.%' OR f.path LIKE '%/route.%' OR f.path LIKE '%/layout.%'
+      GROUP BY f.id
+      ORDER BY f.path
+    `).all() as any[];
+
+    return {
+      stats: { ...stats, edges },
+      hubSymbols,
+      entryPoints,
+    };
+  }
+
+  getAllFilePaths(): string[] {
+    return (this.db.prepare("SELECT path FROM files ORDER BY path").all() as any[]).map(
+      (r) => r.path
+    );
+  }
+
   close(): void {
     this.db.close();
   }
