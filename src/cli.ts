@@ -8,6 +8,7 @@ import { buildGraph } from "./indexer/graph.js";
 import { CodeGraphDB } from "./storage/db.js";
 import { startMcpServer } from "./server/mcp.js";
 import { startWebServer } from "./server/web.js";
+import { startWatcher } from "./indexer/watcher.js";
 
 const DB_FILENAME = ".codegraph.db";
 
@@ -28,6 +29,8 @@ async function main() {
     await dashboardCommand(args.slice(1));
   } else if (command === "query") {
     await queryCommand(args.slice(1));
+  } else if (command === "watch") {
+    await watchCommand(args.slice(1));
   } else {
     console.error(`Unknown command: ${command}`);
     printHelp();
@@ -44,8 +47,10 @@ Commands:
   serve [dir]     Start MCP server on stdio (default: current dir)
   dashboard [dir] Start web dashboard on http://localhost:3000
   query <name>    Query a symbol from the index
+  watch [dir]     Watch for changes and re-index automatically
 
 Options:
+  --watch         Auto re-index on file changes (for serve/dashboard)
   --help, -h      Show this help
 `);
 }
@@ -105,8 +110,9 @@ async function indexCommand(args: string[]) {
 }
 
 async function serveCommand(args: string[]) {
-  const targetDir = resolve(args[0] || ".");
+  const targetDir = resolve(args.find((a) => !a.startsWith("--")) || ".");
   const dbPath = join(targetDir, DB_FILENAME);
+  const shouldWatch = args.includes("--watch");
 
   if (!existsSync(dbPath)) {
     console.error(
@@ -119,12 +125,24 @@ async function serveCommand(args: string[]) {
   console.error(`codegraph serve — MCP server starting`);
   console.error(`  db: ${dbPath}`);
 
+  if (shouldWatch) {
+    console.error(`  watch: enabled (auto re-index on changes)`);
+    startWatcher({
+      rootDir: targetDir,
+      dbPath,
+      onReindex: (stats) => {
+        console.error(`  [watch] re-indexed: ${stats.files} files, ${stats.symbols} symbols, ${stats.edges} edges (${stats.timeMs}ms)`);
+      },
+    });
+  }
+
   await startMcpServer(dbPath);
 }
 
 async function dashboardCommand(args: string[]) {
-  const targetDir = resolve(args[0] || ".");
+  const targetDir = resolve(args.find((a) => !a.startsWith("--")) || ".");
   const dbPath = join(targetDir, DB_FILENAME);
+  const shouldWatch = args.includes("--watch");
 
   if (!existsSync(dbPath)) {
     console.error(
@@ -138,6 +156,17 @@ async function dashboardCommand(args: string[]) {
   console.log(`codegraph dashboard`);
   console.log(`  db: ${dbPath}`);
   startWebServer(dbPath, port);
+
+  if (shouldWatch) {
+    console.log(`  watch: enabled (auto re-index on changes)`);
+    startWatcher({
+      rootDir: targetDir,
+      dbPath,
+      onReindex: (stats) => {
+        console.log(`  [watch] re-indexed: ${stats.files} files, ${stats.symbols} symbols, ${stats.edges} edges (${stats.timeMs}ms)`);
+      },
+    });
+  }
 }
 
 async function queryCommand(args: string[]) {
@@ -193,6 +222,31 @@ async function queryCommand(args: string[]) {
   }
 
   db.close();
+}
+
+async function watchCommand(args: string[]) {
+  const targetDir = resolve(args[0] || ".");
+  const dbPath = join(targetDir, DB_FILENAME);
+
+  // Index first if no DB exists
+  if (!existsSync(dbPath)) {
+    console.log(`  No index found. Running initial index...`);
+    await indexCommand(args);
+  }
+
+  console.log(`\ncodegraph watch`);
+  console.log(`  target: ${targetDir}`);
+  console.log(`  db:     ${dbPath}`);
+  console.log(`  Watching for changes... (Ctrl+C to stop)\n`);
+
+  startWatcher({
+    rootDir: targetDir,
+    dbPath,
+    onReindex: (stats) => {
+      const time = new Date().toLocaleTimeString();
+      console.log(`  [${time}] re-indexed: ${stats.files} files, ${stats.symbols} symbols, ${stats.edges} edges (${stats.timeMs}ms)`);
+    },
+  });
 }
 
 function findDb(startDir: string): string | null {
