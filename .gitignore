@@ -1,5 +1,8 @@
 node_modules/
 dist/
 public/
+.vercel/
 *.codegraph.db
 .codegraph.db
+.codegraph.db-shm
+.codegraph.db-wal
